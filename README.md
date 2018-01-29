@@ -2,6 +2,8 @@
 
 This is a tiny tool I've written to migrate all of our issue tracking data at once. It uses Trello's JSON export feature and the JSON flavour of [Redmine's REST API](http://www.redmine.org/projects/redmine/wiki/Rest_api).
 
+This tool also works with Plan.io
+
 We had been using [Trello](http://trello.com) as a stop-gap solution while our internal services (including [Redmine](http://www.redmine.org)) were being set up. Hence the limited scope of support for features – it was a one-time operation, and I don't really have a vested interest in the application, but it may be of use to others.
 
 ## Dependencies

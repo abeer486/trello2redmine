@@ -6,7 +6,7 @@ import trello2redmine_config as cfg
 import sys
 import json
 import requests
-import urlparse
+from urllib.parse import urlparse
 
 if len(sys.argv) > 3 or (len(sys.argv) == 2 and sys.argv[1] == '-h'):
 	print('Usage: {0} [<options>])'.format(sys.argv[0]))
@@ -22,21 +22,23 @@ if dry_run:
 	print('Making a dry run! Re-run with -c to commit the import into Redmine.')
 else:
 	print('Making a commit!')
-
+"""
 url = urlparse.urlparse(cfg.trello_board_link)
 if not url.netloc.endswith('trello.com'):
 	print('URL does not seem to be a Trello board link. Are you sure this is correct?')
 	sys.exit(1)
-
+"""
 # ============================================================================
 # Trello JSON processing starts here.
 # ============================================================================
 
+
+
 print('Downloading board JSON from Trello...')
 sys.stdout.flush()
 
-#board = json.loads(open(sys.argv[1]).read())
-board = requests.get(cfg.trello_board_link + '.json').json()
+board = json.load(open('data-leads.json', encoding="Latin-1"))
+# board = requests.get(cfg.trello_board_link + '.json').json()
 
 print('Processing board JSON...')
 sys.stdout.flush()
@@ -77,13 +79,17 @@ for a in board["actions"]:
 		comment_list.append({
 			"author":	members_dict[author_id] if author_id in members_dict else '',
 			"text":		a["data"]["text"],
+			"date":		a["date"],
 		})
 		comments_dict[card_id] = comment_list
 
-#print('Members:\n' + str(members_dict))
-#print('Lists:\n' + str(lists_dict))
-#print('Checklists:\n' + str(checklists_dict))
-#print('Comments:\n' + str(comments_dict))
+# print('Members:\n' + str(members_dict))
+# print('Lists:\n' + str(lists_dict))
+# print('Checklists:\n' + str(checklists_dict))
+# print('Comments:\n' + str(comments_dict))
+# print('Comments:\n' + str(comments_dict['59f7f86305120ca7038fc3bc']))
+
+
 
 # ============================================================================
 # Redmine configuration processing starts here.
@@ -102,7 +108,7 @@ for rp in redmine_projects["projects"]:
 if redmine_project_id < 0:
 	print('Project with identifier {0} does not exist in Redmine!\n\n{1}'.format(cfg.redmine_project_identifier, str(redmine_users_dict)))
 	sys.exit(1)
-#print('Redmine project ID: {0}'.format(redmine_project_id))
+print('Redmine project ID: {0}'.format(redmine_project_id))
 
 redmine_users = requests.get(cfg.redmine_root_url + '/users.json', verify=cfg.redmine_verify_certificates, headers={'X-Redmine-API-Key': cfg.redmine_api_key}).json()
 redmine_users_dict = {}
@@ -110,7 +116,7 @@ for ru in redmine_users["users"]:
 	fullname = u'{0} {1}'.format(ru["firstname"], ru["lastname"])
 	redmine_users_dict[fullname] = ru["id"]
 
-#print('Redmine users:\n' + str(redmine_users_dict))
+print('Redmine users:\n' + str(redmine_users_dict))
 
 if not cfg.redmine_default_user in redmine_users_dict:
 	print('Default user does not exist in Redmine!\n\n{0}'.format(str(redmine_users_dict)))
@@ -118,23 +124,37 @@ if not cfg.redmine_default_user in redmine_users_dict:
 
 redmine_priorities = requests.get(cfg.redmine_root_url + '/enumerations/issue_priorities.json', verify=cfg.redmine_verify_certificates, headers={'X-Redmine-API-Key': cfg.redmine_api_key}).json()
 redmine_priorities_dict = {}
-redmine_default_priority = "Normalny"
+redmine_default_priority = "Normal"
 for rp in redmine_priorities["issue_priorities"]:
 	redmine_priorities_dict[rp["name"]] = rp["id"]
 	if "is_default" in rp and rp["is_default"]:
 		redmine_default_priority = rp["name"]
 		
-#print(u'Redmine priorities:\n' + str(redmine_priorities_dict))
+print(u'Redmine priorities:\n' + str(redmine_priorities_dict))
 
 redmine_statuses = requests.get(cfg.redmine_root_url + '/issue_statuses.json', verify=cfg.redmine_verify_certificates, headers={'X-Redmine-API-Key': cfg.redmine_api_key}).json()
 redmine_statuses_dict = {}
-redmine_default_status = "Nowy"
+redmine_default_status = "Lead"
 for rs in redmine_statuses["issue_statuses"]:
 	redmine_statuses_dict[rs["name"]] = rs["id"]
 	if "is_default" in rs and rs["is_default"]:
 		redmine_default_status = rs["name"]
 		
-#print(u'Redmine statuses:\n' + str(redmine_priorities_dict))
+print(u'Redmine statuses:\n' + str(redmine_statuses_dict))
+
+
+# List out categories
+redmine_categories = requests.get(cfg.redmine_root_url + '/projects/ezbook/issue_categories.json', verify=cfg.redmine_verify_certificates, headers={'X-Redmine-API-Key': cfg.redmine_api_key}).json()
+redmine_categories_dict = {}
+redmine_default_category = "Sales"
+for rs in redmine_categories["issue_categories"]:
+	redmine_categories_dict[rs["name"]] = rs["id"]
+	if "is_default" in rs and rs["is_default"]:
+		redmine_default_category = rs["name"]
+		
+print(u'Redmine categories:\n' + str(redmine_categories_dict))
+
+
 
 # ============================================================================
 # Direct Trello-to-Redmine mappings are made here.
@@ -143,38 +163,67 @@ for rs in redmine_statuses["issue_statuses"]:
 print('Generating configuration mappings...')
 sys.stdout.flush()
 
+print('====')
+print('Mapping Users')
+
 user_map = {}
-for id, fullname in members_dict.iteritems():
+for id, fullname in members_dict.items():
 	if not fullname in redmine_users_dict:
 		print(u'Warning: user {0} not found in Redmine, defaulting to {1}'.format(fullname, cfg.redmine_default_user))
 		fullname = cfg.redmine_default_user
 	redmine_id = redmine_users_dict[fullname]
 	user_map[id] = redmine_id
-	#print(u'Matched user {0}, Trello ID {1}, Redmine ID {2}'.format(fullname, id, redmine_id).encode('utf-8'))
+	print(u'Matched user {0}, Trello ID {1}, Redmine ID {2}'.format(fullname, id, redmine_id).encode('utf-8'))
 
 #print(u'User ID map:\n{0}\nDefault user ID: {1}'.format(str(user_map), redmine_users_dict[cfg.redmine_default_user]).encode('utf-8'))
 
+print('====')
+print('Mapping Priorities')
+
+
 priority_map = {}
-for id, name in labels_dict.iteritems():
+for id, name in labels_dict.items():
 	if not name in redmine_priorities_dict:
-		print(u'Warning: Trello label {0} is not mapped to a Redmine priority, defaulting to {1}'.format(name, redmine_default_priority).encode('utf-8'))
+		print(u'Warning: Trello label: [ {0} ] is not mapped to a Redmine priority, defaulting to {1}'.format(name, redmine_default_priority).encode('utf-8'))
 		name = redmine_default_priority
 	redmine_id = redmine_priorities_dict[name]
 	priority_map[id] = redmine_id
-	#print(u'Matched label {0}, Trello ID {1}, Redmine ID {2}'.format(name, id, redmine_id).encode('utf-8'))
+	print(u'Matched Trello label: [ {0} ], Trello ID {1}, Redmine ID {2}'.format(name, id, redmine_id).encode('utf-8'))
+	print ()
 
 #print('Redmine priorities:\n' + str(redmine_priorities_dict))
 
+print('====')
+print('Mapping States')
+
+
 status_map = {}
-for id, name in lists_dict.iteritems():
+for id, name in lists_dict.items():
+	print ()
 	if not name in redmine_statuses_dict:
-		print(u'Warning: Trello list {0} is not mapped to a Redmine status, defaulting to {1}'.format(name, redmine_default_status).encode('utf-8'))
+		print(u'Warning: Trello list: [ {0} ] is not mapped to a Redmine status, defaulting to {1}'.format(name, redmine_default_status).encode('utf-8'))
 		name = redmine_default_status
 	redmine_id = redmine_statuses_dict[name]
 	status_map[id] = redmine_id
-	#print(u'Matched list {0}, Trello ID {1}, Redmine ID {2}'.format(name, id, redmine_id).encode('utf-8'))
+	print(u'Matched Trello list: [ {0} ], Trello ID {1}, Redmine ID {2}'.format(name, id, redmine_id).encode('utf-8'))
 
 #print('Redmine statuses:\n' + str(redmine_statuses_dict))
+
+print('====')
+print('Mapping Labels to Categories')
+
+category_map = {}
+for id, name in labels_dict.items():
+	print ()
+	if not name in redmine_categories_dict:
+		print(u'Warning: Trello label: [ {0} ] is not mapped to a Redmine category, defaulting to {1}'.format(name, redmine_default_category).encode('utf-8'))
+		name = redmine_default_category
+	redmine_id = redmine_categories_dict[name]
+	category_map[id] = redmine_id
+	print(u'Matched Trello label: [ {0} ], Trello ID {1}, Redmine ID {2}'.format(name, id, redmine_id).encode('utf-8'))
+
+print(category_map)
+
 
 # ============================================================================
 # Finally, cards processing.
@@ -193,12 +242,13 @@ for c in board["cards"]:
 				desc += u'\n[{0}] {1}'.format(u'x' if item["state"] == u'complete' else u' ', item["name"])
 	card = {
 		"issue": {
-			"subject": u'[{0}][{1}] {2}'.format(board["name"], orig_lists_dict[c["idList"]], c["name"]),
+			"subject": u'{0}'.format(c["name"]),
 			"description": desc,
 			"project_id": redmine_project_id,
-			"assigned_to_id": user_map[c["idMembers"][0]] if c["idMembers"] else redmine_users_dict[cfg.redmine_default_user],
 			"status_id": status_map[c["idList"]] if c["idList"] else redmine_statuses_dict[redmine_default_status],
 			"priority_id": priority_map[c["idLabels"][0]] if c["idLabels"] else redmine_priorities_dict[redmine_default_priority],
+			"category_id": category_map[c["idLabels"][0]] if c["idLabels"] else redmine_categories_dict[redmine_default_category],
+			"tracker_id" : 5,
 			"is_private": False
 		}
 	}
@@ -217,12 +267,12 @@ for c in board["cards"]:
 			print(str(result))
 			issue = result.json()
 			issue_id = issue["issue"]["id"]
-			#print(u'Response JSON:\n{0}\nIssue ID: {1}'.format(str(issue), issue_id).encode('utf-8'))
+			print(u'Response JSON:\n{0}\nIssue ID: {1}'.format(str(issue), issue_id).encode('utf-8'))
 	if issue_id >= 0 and c["id"] in comments_dict:
 		for index, comment in enumerate(reversed(comments_dict[c["id"]])):
 			update = {
 				"issue": {
-					"notes": u'{0}:\n{1}'.format(comment["author"], comment["text"]).format('utf-8') if len(comment["author"]) > 0 else comment["text"]
+					"notes": u'{0} noted:\n{1}'.format(comment["author"], comment["text"]).format('utf-8') if len(comment["author"]) > 0 else comment["text"]
 				}
 			}
 			print(u'Importing comment {0} of {1}...'.format(index + 1, len(comments_dict[c["id"]])).encode('utf-8'))
@@ -235,5 +285,8 @@ for c in board["cards"]:
 					sys.exit(1)
 				else:
 					print(str(result))
+	print("= = = = Completed card! = = =")	
+	input()    # Wait for the user to proceed
+
 
 print('Done!')
